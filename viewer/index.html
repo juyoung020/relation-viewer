@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Relation Viewer · Ranking</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<style>
+  :root{
+    --bg:#0b0d12; --surface:#12151c; --surface2:#171b24; --line:#232836; --line2:#2c3242;
+    --text:#e6e9f0; --muted:#8a92a6; --faint:#5b6377;
+    --accent:#5eead4; --accent2:#818cf8; --warm:#fb7185;
+    --gold:#f5c451; --silver:#c7cdd8; --bronze:#d39a6a;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Pretendard,-apple-system,'Segoe UI',sans-serif;color:var(--text);background:var(--bg);min-height:100vh;
+    -webkit-font-smoothing:antialiased;letter-spacing:-.01em}
+  header{position:sticky;top:0;z-index:5;display:flex;gap:16px;align-items:center;flex-wrap:wrap;
+    padding:14px 28px;background:rgba(11,13,18,.85);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+  .brand{font-weight:700;font-size:16px;display:flex;align-items:center;gap:10px}
+  .brand .logo{width:22px;height:22px;border-radius:6px;background:conic-gradient(from 200deg,var(--accent),var(--accent2),var(--warm),var(--accent))}
+  .brand small{color:var(--muted);font-weight:500;font-size:13px}
+  #q{font-family:inherit;padding:9px 14px;border-radius:10px;border:1px solid var(--line2);background:var(--surface);color:var(--text);
+    width:220px;outline:none;font-size:13.5px;margin-left:auto}
+  #q::placeholder{color:var(--faint)}
+  #q:focus{border-color:var(--accent2)}
+  #live{color:var(--accent);font-size:12px;font-weight:600}
+  .open{font-size:13px;font-weight:600;color:var(--text);padding:9px 14px;border-radius:10px;border:1px solid var(--line2);background:var(--surface);cursor:pointer}
+  .open:hover{border-color:var(--accent2)}
+  .hint{color:var(--faint);font-size:12px;text-align:center;margin-top:18px}
+  .wrap{max-width:820px;margin:0 auto;padding:28px 20px 60px}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:22px}
+  .stat{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+  .stat .k{color:var(--muted);font-size:12px;font-weight:500}
+  .stat .v{font-size:24px;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums}
+  #meta{display:none}
+  .tabs{display:inline-flex;gap:4px;padding:4px;background:var(--surface);border:1px solid var(--line);border-radius:12px;margin-bottom:14px}
+  .tab{font-family:inherit;font-size:13.5px;font-weight:600;cursor:pointer;border:none;padding:8px 18px;border-radius:9px;background:transparent;color:var(--muted)}
+  .tab:hover{color:var(--text)}
+  .tab.active{background:var(--surface2);color:var(--text);box-shadow:inset 0 0 0 1px var(--line2)}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+  .sub2{font-size:12px;color:var(--muted);padding:14px 20px;border-bottom:1px solid var(--line);font-weight:500}
+  .row{display:grid;grid-template-columns:36px 1fr 160px;gap:6px 14px;align-items:center;padding:14px 20px;border-bottom:1px solid var(--line)}
+  .row:last-child{border-bottom:none}
+  .row:hover,.pair:hover{background:var(--surface2)}
+  .rk{width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:8px;font-size:12.5px;font-weight:700;
+    color:var(--muted);background:var(--surface2);border:1px solid var(--line2);font-variant-numeric:tabular-nums}
+  .rk.r1{color:#1a1405;background:var(--gold);border-color:var(--gold)}
+  .rk.r2{color:#15171c;background:var(--silver);border-color:var(--silver)}
+  .rk.r3{color:#1b1209;background:var(--bronze);border-color:var(--bronze)}
+  .who{display:flex;align-items:center;gap:10px;min-width:0}
+  .dot{width:8px;height:8px;border-radius:50%;flex:none}
+  .lk{color:var(--text);text-decoration:none;font-weight:600;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lk:hover{color:var(--accent)}
+  .me{color:var(--gold)}
+  .bar{display:block;width:100%;height:6px;background:var(--surface2);border-radius:99px;overflow:hidden}
+  .bar>i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--accent2),var(--accent))}
+  .tags{grid-column:2 / 4;display:flex;flex-wrap:wrap;gap:6px}
+  .chip{font-size:11.5px;color:var(--muted);background:var(--surface2);border:1px solid var(--line);border-radius:6px;padding:2px 8px}
+  .pair{display:flex;align-items:center;gap:12px;padding:13px 20px;border-bottom:1px solid var(--line)}
+  .pair:last-child{border-bottom:none}
+  .arrow{font-size:13px;font-weight:700}
+  .arrow.mutual{color:var(--accent)} .arrow.oneway{color:var(--warm)}
+  .w{margin-left:auto;color:var(--muted);font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
+  .empty{color:var(--faint);padding:28px;text-align:center}
+  @media (max-width:640px){.stats{grid-template-columns:repeat(3,1fr)}.row{grid-template-columns:32px 1fr}.row .barcell{grid-column:2}.tags{grid-column:2}#q{width:100%;margin-left:0}}
+  ::-webkit-scrollbar{width:8px}::-webkit-scrollbar-thumb{background:var(--line2);border-radius:8px}
+</style>
+</head>
+<body>
+<header>
+  <span class="brand"><span class="logo"></span>Relation Viewer <small>관계망 분석</small></span>
+  <input id="q" placeholder="멤버 검색" autocomplete="off">
+  <label class="open">데이터 열기<input id="file" type="file" accept=".json,application/json" hidden></label>
+  <span id="meta"></span><span id="live"></span>
+</header>
+<div class="wrap">
+  <div class="stats">
+    <div class="stat"><div class="k">멤버</div><div class="v" id="sMembers">–</div></div>
+    <div class="stat"><div class="k">관계</div><div class="v" id="sLinks">–</div></div>
+    <div class="stat"><div class="k">커뮤니티</div><div class="v" id="sComm">–</div></div>
+  </div>
+  <div class="tabs">
+    <button class="tab active" data-tab="inssa">영향력 순위</button>
+    <button class="tab" data-tab="bestie">상호 관계</button>
+    <button class="tab" data-tab="crush">일방 관계</button>
+  </div>
+  <div class="card"><div id="content"></div></div>
+  <div class="hint">그래프 JSON 파일을 이 화면에 끌어다 놓으면 그 데이터로 열립니다</div>
+</div>
+<script src="loader.js"></script>
+<script>
+const PALETTE=['#5eead4','#818cf8','#fb7185','#fbbf24','#38bdf8','#a78bfa','#34d399','#f472b6','#facc15','#22d3ee'];
+const cc=c=>c<0?'#5b6377':PALETTE[((c%PALETTE.length)+PALETTE.length)%PALETTE.length];
+let curData=null,filt='',tab='inssa',lastSig='',nmeMap=new Map();
+const fmt=n=>Number(n).toLocaleString('ko-KR');
+
+// 모든 사람 이름이 링크 — 눌러서 그 사람 관계망(에고 그래프) 보기.
+function lnk(node){
+  if(!node) return '?';
+  const t=node.is_me?`<span class="me">${node.name} (나)</span>`:node.name;
+  return `<a class="lk" href="${withData('graph.html?focus='+encodeURIComponent(node.id))}">${t}</a>`;
+}
+const rkCls=r=>r===1?'r1':r===2?'r2':r===3?'r3':'';
+function inssaRow(n,mx){return `
+  <div class="row">
+    <div class="rk ${rkCls(n.rank)}">${n.rank}</div>
+    <div class="who"><span class="dot" style="background:${cc(n.community)}"></span>${lnk(n)}</div>
+    <div class="barcell"><span class="bar"><i style="width:${(n.centrality/mx*100).toFixed(0)}%"></i></span></div>
+  </div>`;}
+
+function draw(){
+  const d=curData;if(!d)return;const f=filt.trim();const hit=s=>!f||(s&&s.includes(f));
+  const el=document.getElementById('content');
+  if(tab==='inssa'){
+    const mx=Math.max(...d.nodes.filter(n=>n.rank).map(n=>n.centrality),0.0001);
+    const ranked=d.nodes.filter(n=>n.rank&&hit(n.name)).sort((a,b)=>a.rank-b.rank).slice(0,100);
+    el.innerHTML=`<div class="sub2">상호작용 가중치 기반 중심성 순위</div>`+(ranked.map(n=>inssaRow(n,mx)).join('')||'<div class="empty">검색 결과가 없습니다</div>');
+    return;
+  }
+  const nmStr=id=>{const n=nmeMap.get(id);return n?n.name:String(id);};
+  const kind=tab==='bestie'?'mutual':'oneway';
+  const arrow=tab==='bestie'?'<span class="arrow mutual">⇄</span>':'<span class="arrow oneway">→</span>';
+  const sub=tab==='bestie'?'양방향으로 주고받는 관계 · 가중치 순':'한쪽 방향으로만 향하는 관계 · 가중치 순';
+  const arr=d.links.filter(l=>l.kind===kind
+      &&(hit(nmStr(l.source.id||l.source))||hit(nmStr(l.target.id||l.target))))
+    .sort((a,b)=>b.weight-a.weight).slice(0,80);
+  el.innerHTML=`<div class="sub2">${sub}</div>`+(arr.map((l,i)=>{
+    const s=nmMapGet(l.source.id||l.source), t=nmMapGet(l.target.id||l.target);
+    return `<div class="pair"><div class="rk ${rkCls(i+1)}">${i+1}</div>${lnk(s)} ${arrow} ${lnk(t)}<span class="w">${fmt(Math.round(l.weight))}</span></div>`;
+  }).join('')||'<div class="empty">아직 데이터가 없습니다</div>');
+}
+function nmMapGet(id){return nmeMap.get(id)||{id,name:String(id),commented:false};}
+
+function render(d){
+  curData=d;nmeMap=new Map(d.nodes.map(n=>[n.id,n]));
+  document.getElementById('meta').textContent=`멤버 ${d.meta.members} · 관계 ${d.meta.links} · 무리 ${d.meta.communities}`;
+  document.getElementById('sMembers').textContent=fmt(d.meta.members);
+  document.getElementById('sLinks').textContent=fmt(d.meta.links);
+  document.getElementById('sComm').textContent=fmt(d.meta.communities);
+  draw();
+  lastSig=d.meta.members+'/'+d.meta.links;const lv=document.getElementById('live');lv.textContent='● 갱신됨';setTimeout(()=>lv.textContent='',2500);
+}
+document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active');tab=b.dataset.tab;draw();
+}));
+document.getElementById('q').addEventListener('input',e=>{filt=e.target.value;draw();});
+async function load(){const d=await loadGraph();
+  if(!d){document.getElementById('content').innerHTML='<div class="empty">데이터가 없습니다. 그래프 JSON 을 끌어다 놓으세요.</div>';return;}
+  if(d.meta.members+'/'+d.meta.links!==lastSig)render(d);}
+enableFileOpen('file');
+load();if(DATA_PARAM!=='local')setInterval(load,8000);
+</script>
+</body>
+</html>

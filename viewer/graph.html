@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Relation Viewer · Ego Graph</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<style>
+  :root{
+    --bg:#0b0d12; --surface:rgba(18,21,28,.88); --surface2:#171b24; --line:#232836; --line2:#2c3242;
+    --text:#e6e9f0; --muted:#8a92a6; --faint:#5b6377;
+    --accent:#5eead4; --accent2:#818cf8; --warm:#fb7185; --gold:#f5c451;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;font-family:Pretendard,-apple-system,'Segoe UI',sans-serif;color:var(--text);
+    -webkit-font-smoothing:antialiased;letter-spacing:-.01em}
+  body{background:radial-gradient(1200px 800px at 60% 45%,#141826 0%,var(--bg) 70%)}
+  #graph{position:fixed;inset:0}
+  #top{position:fixed;top:16px;left:16px;right:16px;z-index:10;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .glass{background:var(--surface);border:1px solid var(--line);border-radius:12px;backdrop-filter:blur(10px)}
+  .brand{font-weight:700;font-size:15px;padding:9px 14px;display:flex;align-items:center;gap:9px}
+  .brand .logo{width:18px;height:18px;border-radius:5px;background:conic-gradient(from 200deg,var(--accent),var(--accent2),var(--warm),var(--accent))}
+  #q{font-family:inherit;padding:9px 14px;color:var(--text);width:200px;outline:none;font-size:13.5px}
+  #q::placeholder{color:var(--faint)}
+  #q:focus{border-color:var(--accent2)}
+  .navbtn{text-decoration:none;color:var(--text);font-size:13px;font-weight:600;padding:9px 14px;border-radius:12px;
+    background:var(--surface);border:1px solid var(--line2)}
+  .navbtn:hover{border-color:var(--accent2)}
+  .navbtn.alt{display:none!important}
+  #meta{font-size:12.5px;color:var(--muted);padding:9px 14px;font-variant-numeric:tabular-nums}
+  #live{font-size:12px;color:var(--accent);font-weight:600}
+  #focusInfo{font-size:13.5px;font-weight:600;padding:9px 14px}
+  #focusInfo b{color:var(--accent)}
+  #panel{position:fixed;top:76px;right:16px;width:260px;z-index:10;padding:18px;display:none}
+  #panel h2{margin:0 0 6px;font-size:17px;font-weight:700}
+  #panel .sub{color:var(--muted);font-size:12.5px;line-height:1.7}
+  #panel .kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin-top:12px;font-size:13px}
+  #panel .kv span:nth-child(odd){color:var(--faint)}
+  #panel .kv span:nth-child(even){font-weight:600;font-variant-numeric:tabular-nums}
+  .legend{position:fixed;bottom:16px;left:16px;z-index:10;font-size:12px;padding:12px 16px;line-height:2;color:var(--muted)}
+  .legend b{color:var(--text);font-weight:600}
+  .sw{display:inline-block;width:22px;height:0;border-top:2px solid;vertical-align:middle;margin-right:6px}
+  .cdot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:3px;vertical-align:middle}
+</style>
+</head>
+<body>
+<div id="top">
+  <span class="brand glass"><span class="logo"></span>Relation Viewer</span>
+  <input id="q" class="glass" placeholder="그래프에서 멤버 찾기 (Enter)" autocomplete="off">
+  <a class="navbtn" id="backbtn" href="index.html">← 순위</a>
+  <span id="focusInfo" class="glass" style="display:none"></span>
+  <a id="allbtn" class="navbtn alt" href="index.html" style="display:none">← 순위</a>
+  <span id="meta" class="glass"></span><span id="live"></span>
+</div>
+<div id="panel" class="glass"></div>
+<div class="legend glass">
+  <span class="sw" style="border-color:#5eead4"></span><b>상호 관계</b> 양방향 &nbsp;&nbsp;
+  <span class="sw" style="border-color:#fb7185;opacity:.7"></span><b>일방 관계</b> 한쪽만 →<br>
+  <span class="cdot" style="background:#5eead4"></span><span class="cdot" style="background:#818cf8"></span><span class="cdot" style="background:#fbbf24"></span> 점 색 = 커뮤니티 · 점 크기 = 영향력
+</div>
+<div id="graph"></div>
+<script src="https://unpkg.com/force-graph"></script>
+<script src="loader.js"></script>
+<script>
+const PALETTE=['#5eead4','#818cf8','#fb7185','#fbbf24','#38bdf8','#a78bfa','#34d399','#f472b6','#facc15','#22d3ee'];
+const cc=c=>c<0?'#5b6377':PALETTE[((c%PALETTE.length)+PALETTE.length)%PALETTE.length];
+document.getElementById('backbtn').href=withData('index.html');
+const FOCUS=new URLSearchParams(location.search).get('focus');
+let G,byId=new Map(),hl=null,lastSig='',fitted=false,rawData=null;
+const fmt=n=>Number(n).toLocaleString('ko-KR');
+
+function setMeta(d){document.getElementById('meta').textContent=`멤버 ${fmt(d.meta.members)} · 관계 ${fmt(d.meta.links)}`;}
+function focusNode(n){hl=n.id;G.centerAt(n.x,n.y,600);G.zoom(4,600);}
+function showPanel(n){
+  const p=document.getElementById('panel');p.style.display='block';
+  const links=G.graphData().links;
+  let mutual=0,out=0,inn=0;
+  for(const l of links){const s=l.source.id||l.source,t=l.target.id||l.target;
+    if(l.kind==='mutual'&&(s===n.id||t===n.id))mutual++;
+    else if(l.kind==='oneway'){if(s===n.id)out++;else if(t===n.id)inn++;}}
+  p.innerHTML=`<h2>${n.name}${n.is_me?' <span style="color:var(--gold);font-size:13px">(나)</span>':''}</h2>`+
+    `<div class="sub">커뮤니티 ${n.community}</div>`+
+    `<div class="kv"><span>영향력 순위</span><span>${n.rank?'#'+n.rank:'–'}</span>`+
+    `<span>상호 관계</span><span>${mutual}</span><span>보낸 일방 관계</span><span>${out}</span><span>받은 일방 관계</span><span>${inn}</span></div>`;
+}
+// 에고 네트워크: focus 노드 + 직접 연결 이웃 + 그 집합 내부 링크만
+function egoView(data){
+  if(!FOCUS) return data;
+  const keep=new Set([FOCUS]);
+  for(const l of data.links){const s=l.source.id||l.source,t=l.target.id||l.target;if(s===FOCUS)keep.add(t);if(t===FOCUS)keep.add(s);}
+  const nodes=data.nodes.filter(n=>keep.has(n.id));
+  const links=data.links.filter(l=>{const s=l.source.id||l.source,t=l.target.id||l.target;return keep.has(s)&&keep.has(t);});
+  return {nodes,links,meta:{members:nodes.length,links:links.length,communities:data.meta.communities}};
+}
+function setFocusBanner(data){
+  if(!FOCUS) return;
+  const me=data.nodes.find(n=>n.id===FOCUS);
+  const fi=document.getElementById('focusInfo');fi.style.display='inline-block';fi.innerHTML=`<b>${me?me.name:'?'}</b> 중심 관계망`;
+}
+function applyView(){
+  const view=egoView(rawData);
+  const cur=G.graphData();const pos=new Map(cur.nodes.map(n=>[n.id,{x:n.x,y:n.y,vx:n.vx,vy:n.vy}]));
+  for(const n of view.nodes){const p=pos.get(n.id);if(p)Object.assign(n,p);}
+  byId=new Map(view.nodes.map(n=>[n.id,n]));G.graphData(view);fitted=false;
+  lastSig=rawData.meta.members+'/'+rawData.meta.links;setMeta(view);
+  const l=document.getElementById('live');l.textContent='● 갱신됨';setTimeout(()=>l.textContent='',2500);
+}
+
+// 전체 관계망(focus 없음)은 제거 — 너무 무거움. 개인 에고 그래프만. 그 외엔 순위로.
+if(!FOCUS) location.replace(withData('index.html'));
+else loadGraph().then(data=>{
+  rawData=data;const view=egoView(data);
+  byId=new Map(view.nodes.map(n=>[n.id,n]));lastSig=data.meta.members+'/'+data.meta.links;
+  setMeta(view);setFocusBanner(data);
+  G=ForceGraph()(document.getElementById('graph'))
+    .graphData(view).backgroundColor('rgba(0,0,0,0)').nodeId('id').nodeRelSize(1)
+    .nodeLabel(n=>`${n.name}${n.rank?` · 영향력 #${n.rank}`:''}`)
+    .linkColor(l=>l.kind==='mutual'?'rgba(94,234,212,.45)':l.kind==='oneway'?'rgba(251,113,133,.14)':'rgba(138,146,166,.08)')
+    .linkWidth(l=>l.kind==='mutual'?Math.max(0.8,Math.sqrt(l.weight)*0.6):0.5)
+    .linkDirectionalArrowLength(l=>l.kind==='oneway'?2.5:0)
+    .linkDirectionalArrowColor(()=>'rgba(251,113,133,.35)').linkDirectionalArrowRelPos(1)
+    .onNodeClick(n=>{focusNode(n);showPanel(n);})
+    .onBackgroundClick(()=>{hl=null;document.getElementById('panel').style.display='none';})
+    .nodeCanvasObject((n,ctx,scale)=>{
+      const isFocus=FOCUS&&n.id===FOCUS;
+      const r=Math.max(2,Math.sqrt(n.size||6))*(isFocus?1.6:1);
+      const linked=hl&&G.graphData().links.some(l=>{const s=l.source.id||l.source,t=l.target.id||l.target;return(s===hl&&t===n.id)||(t===hl&&s===n.id);});
+      ctx.globalAlpha=(hl&&hl!==n.id&&!linked)?0.1:0.95;
+      const col=cc(n.community);
+      ctx.shadowColor=col;ctx.shadowBlur=(isFocus||n.rank&&n.rank<=3)?14:4;
+      ctx.beginPath();ctx.arc(n.x,n.y,r,0,2*Math.PI);ctx.fillStyle=col;ctx.fill();
+      ctx.shadowBlur=0;
+      if(isFocus){ctx.strokeStyle='#ffffff';ctx.lineWidth=2/scale;ctx.stroke();}
+      // 라벨은 중심 노드·상위 3위·확대 시에만 (화면이 글자로 덮이지 않게)
+      if(isFocus||(n.rank&&n.rank<=3)||scale>3){
+        ctx.font=`600 ${Math.max(3,12/scale)}px Pretendard,sans-serif`;ctx.fillStyle='rgba(230,233,240,.9)';
+        ctx.textAlign='center';ctx.textBaseline='top';
+        ctx.fillText(n.name+(n.is_me?' (나)':''),n.x,n.y+r+2);
+      }
+      ctx.globalAlpha=1;
+    });
+  if(FOCUS) G.onEngineStop(()=>{if(!fitted){fitted=true;G.zoomToFit(500,90);}});
+  const q=document.getElementById('q');
+  q.addEventListener('keydown',e=>{if(e.key!=='Enter')return;const t=q.value.trim();if(!t)return;
+    const n=[...byId.values()].find(x=>x.name&&x.name.includes(t));if(n){focusNode(n);showPanel(n);}});
+  if(DATA_PARAM!=='local') setInterval(async()=>{const d=await loadGraph();
+    if(d&&d.meta.members+'/'+d.meta.links!==lastSig){rawData=d;applyView();}},8000);
+});
+</script>
+</body>
+</html>

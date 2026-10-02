@@ -1,0 +1,3 @@
+# 그래프 분석
+networkx>=3.0
+python-louvain>=0.16        # 커뮤니티 탐지 (import community)

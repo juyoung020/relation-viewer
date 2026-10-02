@@ -1,0 +1,8 @@
+# 파이썬
+.venv/
+__pycache__/
+*.pyc
+
+# 내 데이터로 만든 결과 (실명이 들어갈 수 있음 — 커밋 금지)
+/data/
+viewer/data/graph_data.json
